@@ -78,8 +78,7 @@ jQuery( function($) {
   }
 
   /* City select boxes */
-  var cities_json = wc_city_select_params.cities.replace( /&quot;/g, '"' );
-  var cities = $.parseJSON( cities_json );
+  var cities = $.parseJSON(wc_city_select_params.cities);
 
   $( 'body' ).on( 'country_to_state_changing', function(e, country, $container) {
     var $statebox = $container.find( '#billing_state, #shipping_state, #calc_shipping_state' );
@@ -177,4 +176,37 @@ jQuery( function($) {
 
     $( document.body ).trigger( 'city_to_select' );
   }
+});
+
+
+jQuery(document).ready(function($){
+    
+    $(document).on('change', '#billing_state', function() {
+        $('#billing_postcode').val('');   
+    });
+    
+    $(document).on('change', '#billing_city', function() {
+
+        if(!$(this).val()) {
+            return; 
+        } 
+        
+        $('#billing_postcode').val('Loading...');   
+
+        var data = {
+            action: 'zipcode',
+            state: $('#billing_state').val(),
+            city: $(this).val()
+        };
+      
+        jQuery.ajax({
+            url: baseUrl,
+            data: data,
+            type: 'POST',
+            success: function (res) {
+                var postCode = res;
+                $('#billing_postcode').val(postCode);
+            }
+        });
+    });
 });
