@@ -18,6 +18,11 @@
  */
 defined( 'ABSPATH' ) or die( 'You can not access this file directly!' );
 
+require 'vendor/autoload.php';
+
+use PhpOffice\PhpSpreadsheet\IOFactory;
+
+
 /**
  * Check if WooCommerce is active
  */
@@ -29,77 +34,91 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 		private $states;
 		private $places;
 
+		private $sourcefilePath = __DIR__ . '/RO-CITY-ZIP.xlsx';
+
 		/**
-		 * Construct class
-		 */
+		* Construct class
+		*/
 		public function __construct() {
-			add_action( 'plugins_loaded', array( $this, 'init') );
+			 add_action( 'plugins_loaded', array( $this, 'init') );
 		}
 
 		/**
-		 * WC init
-		 */
+		* WC init
+		*/
 		public function init() {
 			$this->init_states();
-			$this-> init_places();
+			$this->	init_places();
 		}
 
 		/**
-		 * WC States init
-		 */
+		* WC States init
+		*/
 		public function init_states() {
 			add_filter('woocommerce_states', array($this, 'wc_states'));
 		}
 
 		/**
-		 * WC States init
-		 */
+		* WC States init
+		*/
 		public function init_places() {
 			add_filter( 'woocommerce_billing_fields', array( $this, 'wc_billing_fields' ), 10, 2 );
 			add_filter( 'woocommerce_shipping_fields', array( $this, 'wc_shipping_fields' ), 10, 2 );
 			add_filter( 'woocommerce_form_field_city', array( $this, 'wc_form_field_city' ), 10, 4 );
 
+            add_action( 'wp_ajax_nopriv_zipcode', array( $this, 'loadExcelData' ), 10, 4 );
+            add_action( 'wp_ajax_zipcode' , array( $this, 'loadExcelData' ), 10, 4 );
+
+            function baseUrl() { ?>
+                <script> var baseUrl = "<?php echo home_url('wp-admin/admin-ajax.php'); ?>"; </script>
+                <?php
+            }
+            add_action('wp_head', 'baseUrl');
+
 			add_action( 'wp_enqueue_scripts', array( $this, 'load_scripts' ) );
 		}
 
-		/**
-		 * Implement WC States
-		 * @param mixed $states
-		 * @return mixed
-		 */
-		public function  wc_states($states) {
-			//get countries allowed by store owner
-			$allowed = $this->get_store_allowed_countries();
-
-			if (!empty( $allowed ) ) {
-				foreach ($allowed as $code => $country) {
-					if (! isset( $states[$code] ) && file_exists($this->get_plugin_path() . '/states/' . $code . '.php')) {
-						include($this->get_plugin_path() . '/states/' . $code . '.php');
-					}
-				}
-			}
-
-			return $states;
-		}
 
 		/**
-		 * Modify billing field
-		 * @param mixed $fields
-		 * @param mixed $country
-		 * @return mixed
-		 */
-		public function wc_billing_fields( $fields, $country ) {
+	    * Implement WC States
+	    * @param mixed $states
+	    * @return mixed
+	    */
+        public function  wc_states($states) {
+        	//get countries allowed by store owner
+            $allowed = $this->get_store_allowed_countries();
+
+
+
+            if (!empty( $allowed ) ) {
+                foreach ($allowed as $code => $country) {
+                    if (! isset( $states[$code] ) && file_exists($this->get_plugin_path() . '/states/' . $code . '.php')) {
+                        include($this->get_plugin_path() . '/states/' . $code . '.php');
+                    }
+                }
+            }
+
+            return $states;
+        }
+
+        /**
+	    * Modify billing field
+	    * @param mixed $fields
+	    * @param mixed $country
+	    * @return mixed
+	    */
+        public function wc_billing_fields( $fields, $country ) {
 			$fields['billing_city']['type'] = 'city';
 
 			return $fields;
 		}
 
 		/**
-		 * Modify shipping field
-		 * @param mixed $fields
-		 * @param mixed $country
-		 * @return mixed
-		 */
+	    * Modify shipping field
+	    * @param mixed $fields
+	    * @param mixed $country
+	    * @return mixed
+	    */
 		public function wc_shipping_fields( $fields, $country ) {
 			$fields['shipping_city']['type'] = 'city';
 
@@ -107,14 +126,15 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 		}
 
 		/**
-		 * Implement places/city field
-		 * @param mixed $field
-		 * @param string $key
-		 * @param mixed $args
-		 * @param string $value
-		 * @return mixed
-		 */
+	    * Implement places/city field
+	    * @param mixed $field
+	    * @param string $key
+	    * @param mixed $args
+	    * @param string $value
+	    * @return mixed
+	    */
 		public function wc_form_field_city($field, $key, $args, $value ) {
+
 			// Do we need a clear div?
 			if ( ( ! empty( $args['clear'] ) ) ) {
 				$after = '<div class="clear"></div>';
@@ -156,11 +176,14 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 			$country_key = $key == 'billing_city' ? 'billing_country' : 'shipping_country';
 			$current_cc  = WC()->checkout->get_value( $country_key );
 
+
 			$state_key = $key == 'billing_city' ? 'billing_state' : 'shipping_state';
 			$current_sc  = WC()->checkout->get_value( $state_key );
 
+
 			// Get country places
 			$places = $this->get_places( $current_cc );
+
 
 			if ( is_array( $places ) ) {
 
@@ -168,7 +191,7 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 
 				$field .= '<option value="">'. __( 'Select an option&hellip;', 'woocommerce' ) .'</option>';
 
-				if ( $current_sc && array_key_exists( $current_sc, $places ) ) {
+				if ( $current_sc ) {
 					$dropdown_places = $places[ $current_sc ];
 				} else if ( is_array($places) &&  isset($places[0])) {
 					$dropdown_places = array_reduce( $places, 'array_merge', array() );
@@ -177,10 +200,10 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 					$dropdown_places = $places;
 				}
 
-				foreach ( $dropdown_places as $city_name ) {
-					if(!is_array($city_name)) {
+	        	foreach ( $dropdown_places as $city_name ) {
+	        		if(!is_array($city_name)) {
 						$field .= '<option value="' . esc_attr( $city_name ) . '" '.selected( $value, $city_name, false ) . '>' . $city_name .'</option>';
-					}
+	        		}
 				}
 
 				$field .= '</select>';
@@ -199,11 +222,53 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 
 			return $field;
 		}
-		/**
-		 * Get places
-		 * @param string $p_code(default:)
-		 * @return mixed
-		 */
+
+
+		public function loadExcelData() {
+
+		    $postStateCity = $_POST['state'] . '=' . $_POST['city'];
+
+		    $spreadsheet = IOFactory::load($this->sourcefilePath);;
+            $worksheet = $spreadsheet->getActiveSheet();
+            $rows = $worksheet->toArray();
+            $postalCodesByCity = [];
+
+            foreach ($rows as $row) {
+                $stateCity = $row[1] . '=' . $row[2];
+
+                $zipCode = $row[3];
+                $postalCodesByCity[$stateCity] = $zipCode;
+            }
+
+            echo !empty($postalCodesByCity[$postStateCity]) ? $postalCodesByCity[$postStateCity] : '';
+            exit;
+
+        }
+
+        public function getCitiesRO() {
+            $spreadsheet = IOFactory::load($this->sourcefilePath);;
+            $worksheet = $spreadsheet->getActiveSheet();
+            $rows = $worksheet->toArray();
+            $citiesByCounty = [];
+
+            foreach ($rows as $row) {
+                $county = $row[1];
+                $city = $row[2];
+
+                if(!isset($citiesByCounty[$county])) {
+                    $citiesByCounty[$county] = [];
+                }
+
+                $citiesByCounty[$county][] = $city;
+            }
+            return $citiesByCounty;
+        }
+
+ 		/**
+	    * Get places
+	    * @param string $p_code(default:)
+	    * @return mixed
+	    */
 		public function get_places( $p_code = null ) {
 			if ( empty( $this->places ) ) {
 				$this->load_country_places();
@@ -216,9 +281,9 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 			}
 		}
 		/**
-		 * Get country places
-		 * @return mixed
-		 */
+	    * Get country places
+	    * @return mixed
+	    */
 		public function load_country_places() {
 			global $places;
 
@@ -236,15 +301,16 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 		}
 
 		/**
-		 * Load scripts
-		 */
+	    * Load scripts
+	    */
 		public function load_scripts() {
 			if ( is_cart() || is_checkout() || is_wc_endpoint_url( 'edit-address' ) ) {
 
 				$city_select_path = $this->get_plugin_url() . 'js/place-select.js';
 				wp_enqueue_script( 'wc-city-select', $city_select_path, array( 'jquery', 'woocommerce' ), self::VERSION, true );
 
-				$places = json_encode( $this->get_places() );
+				$places = json_encode(['RO' => $this->getCitiesRO()] );
+
 				wp_localize_script( 'wc-city-select', 'wc_city_select_params', array(
 					'cities' => $places,
 					'i18n_select_city_text' => esc_attr__( 'Select an option&hellip;', 'woocommerce' )
@@ -252,32 +318,32 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 			}
 		}
 
-		/**
-		 * Get plugin root path
-		 * @return mixed
-		 */
-		private function get_plugin_path() {
-			if (isset($this->plugin_path)) {
+        /**
+        * Get plugin root path
+	    * @return mixed
+        */
+        private function get_plugin_path() {
+            if (isset($this->plugin_path)) {
 				return $this->plugin_path;
 			}
 			$path = $this->plugin_path = plugin_dir_path( __FILE__ );
 
 			return untrailingslashit($path);
-		}
+        }
 
-		/**
-		 * Get Store allowed countries
-		 * @return mixed
-		 */
-		private function get_store_allowed_countries() {
-			return array_merge( WC()->countries->get_allowed_countries(), WC()->countries->get_shipping_countries() );
-		}
+        /**
+        * Get Store allowed countries
+	    * @return mixed
+        */
+        private function get_store_allowed_countries() {
+            return array_merge( WC()->countries->get_allowed_countries(), WC()->countries->get_shipping_countries() );
+        }
 
-		/**
-		 * Get plugin url
-		 * @return mixed
-		 */
-		public function get_plugin_url() {
+        /**
+        * Get plugin url
+	    * @return mixed
+        */
+        public function get_plugin_url() {
 
 			if (isset($this->plugin_url)) {
 				return $this->plugin_url;
@@ -285,9 +351,9 @@ if(in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get_o
 
 			return $this->plugin_url = plugin_dir_url( __FILE__ );
 		}
-	}
-	/**
-	 * Instantiate class
-	 */
-	$GLOBALS['wc_states_places'] = new WC_States_Places();
+    }
+    /**
+    * Instantiate class
+    */
+    $GLOBALS['wc_states_places'] = new WC_States_Places();
 };
